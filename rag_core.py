@@ -54,12 +54,15 @@ def process_pdf(uploaded_file):
       chunks.append({"text": c, "page": i})
 
   client = chromadb.Client()
-  col = client.get_or_create_collection(f"rag_{int(time.time())}")
+  # Dùng 1 collection cố định cho mọi file
+  col = client.get_or_create_collection("documents")
+  # Tránh nhân đôi khi upload lại cùng file, xoá chunk cũ của file đó trước khi add
+  col.delete(where={"source": uploaded_file.name})
   col.add(
-    ids=[str(i) for i in range(len(chunks))],
+    ids=[f"{uploaded_file.name}_{i}" for i in range(len(chunks))],
     documents=[c["text"] for c in chunks],
     embeddings=embed([c["text"] for c in chunks]),
-    metadatas=[{"page": c["page"]} for c in chunks],
+    metadatas=[{"page": c["page"], "source": uploaded_file.name} for c in chunks],
   )
   return col, len(chunks)
 
