@@ -2,6 +2,7 @@ import streamlit as st
 import rag_core
 
 # Khởi tạo Session State
+st.session_state.collection = rag_core.get_collection()
 for k, v in {"collection": None, "pdf_name": "", "chat_history": []}.items():
   st.session_state.setdefault(k,v)
 
@@ -17,7 +18,10 @@ with st.sidebar:
       st.session_state.collection, n = rag_core.process_pdf(f)
       st.session_state.pdf_name = f.name
       st.session_state.chat_history = []
-    st.success(f"{n} chunks")
+    if n == 0:
+      st.warning("Không trích được text — file có thể là PDF scan/ảnh.")
+    else:
+      st.success(f"{n} chunks")
   st.info(f" {st.session_state.pdf_name}" if st.session_state.pdf_name else " Chưa có tài liệu")
   if st.button("Xóa lịch sử chat", use_container_width=True):
     st.session_state.chat_history = []
@@ -26,7 +30,7 @@ for m in st.session_state.chat_history:
   with st.chat_message(m["role"]):
     st.write(m["content"])
 
-if st.session_state.collection is None:
+if st.session_state.collection.count() == 0:
   st.info("Upload và xử lý PDF trước khi chat.")
   st.chat_input("Nhập câu hỏi...", disabled=True)
 else:

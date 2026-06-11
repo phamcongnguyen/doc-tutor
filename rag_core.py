@@ -3,8 +3,11 @@ import pypdf
 import chromadb
 import ollama
 
-LLM_MODEL = "vicuna:7b-v1.5-q5_1"
+client = chromadb.PersistentClient(path="chroma_db")
+
+LLM_MODEL = "qwen2.5:3b"
 EMBED_MODEL = "bge-m3"
+DOCUMENTS = "documents"
 
 PROMPT = """Bạn là trợ lý hỏi đáp. Dùng các đoạn ngữ cảnh dưới đây để trả lời câu hỏi.
 Nếu ngữ cảnh không có thông tin, hãy nói là bạn không biết, đừng bịa.
@@ -53,9 +56,12 @@ def process_pdf(uploaded_file):
     for c in chunk_text(page_text):
       chunks.append({"text": c, "page": i})
 
-  client = chromadb.Client()
   # Dùng 1 collection cố định cho mọi file
-  col = client.get_or_create_collection("documents")
+  col = client.get_or_create_collection(DOCUMENTS)
+  # PDF scan/rỗng không trích được text -> không có gì để lưu.
+  # Trả về sớm để tránh lỗi embed([]) / col.add([]) khi danh sách chunk rỗng.
+  if not chunks:
+    return col, 0
   # Tránh nhân đôi khi upload lại cùng file, xoá chunk cũ của file đó trước khi add
   col.delete(where={"source": uploaded_file.name})
   col.add(
@@ -76,3 +82,6 @@ def rag(question, collection, k = 4):
     options = {"temperature": 0},
   )
   return resp["message"]["content"]
+
+def get_collection():
+  return client.get_or_create_collection(DOCUMENTS)
