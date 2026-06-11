@@ -1,0 +1,29 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Môi trường ảo ---
+venv/
+.venv/
+env/
+
+# --- ChromaDB (dữ liệu persist, sinh ra khi chạy — không đưa lên repo) ---
+chroma/
+chroma_db/
+*.sqlite3
+
+# --- macOS ---
+.DS_Store
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- File tạm ---
+*.tmp
+*.log
+
+# --- Bản nháp/biến thể cũ (không đưa lên repo) ---
+ver-tv/
