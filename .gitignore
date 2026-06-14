@@ -8,6 +8,7 @@ __pycache__/
 venv/
 .venv/
 env/
+vendor/
 
 # --- ChromaDB (dữ liệu persist, sinh ra khi chạy — không đưa lên repo) ---
 chroma/

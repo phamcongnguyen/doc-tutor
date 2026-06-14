@@ -1,0 +1,17 @@
+# Không đưa vào image: dữ liệu runtime, venv IDE, tài liệu, metadata git
+.git
+__pycache__/
+*.py[cod]
+vendor/
+venv/
+.venv/
+env/
+chroma_db/
+chroma/
+*.sqlite3
+docs/
+*.log
+*.tmp
+.DS_Store
+.vscode/
+.idea/
