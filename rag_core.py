@@ -72,16 +72,19 @@ def process_pdf(uploaded_file):
   )
   return col, len(chunks)
 
-def rag(question, collection, k = 4):
+def rag(question, collection, chat_history, model = LLM_MODEL, k = 4):
   """Hàm RAG: tìm context và hỏi LLM."""
   res = collection.query(query_embeddings = embed([question]), n_results = k)
   context = "\n\n".join(res["documents"][0])
-  resp = ollama.chat(
-    model = LLM_MODEL,
-    messages = [{"role": "user", "content": PROMPT.format(context = context, question = question)}],
+  history = chat_history[-6:] # giữ 3 lượt gần nhất (mỗi lượt = user + assistant)
+  stream = ollama.chat(
+    model = model,
+    messages = [*history, {"role": "user", "content": PROMPT.format(context = context, question = question)}],
     options = {"temperature": 0},
+    stream = True,
   )
-  return resp["message"]["content"]
+  for chunk in stream:
+    yield chunk["message"]["content"]
 
 def get_collection():
   return client.get_or_create_collection(DOCUMENTS)

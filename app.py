@@ -1,6 +1,8 @@
 import streamlit as st
 import rag_core
 
+MODELS = ["qwen2.5:3b", "gemma2:9b"]   # danh sách model đã pull sẵn
+
 # Khởi tạo Session State
 st.session_state.collection = rag_core.get_collection()
 for k, v in {"collection": None, "pdf_name": "", "chat_history": []}.items():
@@ -12,6 +14,7 @@ st.title("PDF RAG Assistant: Native")
 
 with st.sidebar:
   st.subheader("Upload tài liệu")
+  model = st.selectbox("Chọn model", MODELS)
   f = st.file_uploader("Chọn file PDF", type="pdf")
   if f and st.button("Xử lý PDF", use_container_width=True):
     with st.spinner("Đang xử lý..."):
@@ -36,11 +39,14 @@ if st.session_state.collection.count() == 0:
 else:
   q = st.chat_input("Nhập câu hỏi của bạn...")
   if q:
-    st.session_state.chat_history.append({"role": "user", "content": q})
     with st.chat_message("user"):
       st.write(q)
     with st.chat_message("assistant"):
-      with st.spinner("Đang suy nghĩ..."):
-        ans = rag_core.rag(q, st.session_state.collection)
-        st.write(ans)
+      try:  
+        stream = rag_core.rag(q, st.session_state.collection, st.session_state.chat_history, model)
+        ans = st.write_stream(stream)
+      except Exception as e:
+        ans = f"Lỗi khi gọi model `{model}` — model đã được pull chưa? ({e})"
+        st.error(ans)
+    st.session_state.chat_history.append({"role": "user", "content": q})
     st.session_state.chat_history.append({"role": "assistant", "content": ans})
