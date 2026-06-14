@@ -11,19 +11,14 @@ All AI models **run locally via Ollama** — no paid API, no constant internet n
 
 ## Features
 
-**Working now**
-
-- Q&A over PDF documents in Vietnamese, fully local via Ollama
-- Persistent index — processed documents survive app restarts
-- Page & source metadata stored for every passage (groundwork for citations)
-
-**Planned** (see the detailed roadmap in [`docs/PLAN.md`](docs/PLAN.md))
-
+- Q&A over PDF documents in Vietnamese
 - Source citation (shows which page the answer came from)
 - Automatic quiz / flashcard generation from the document
 - Document summarization
 - Conversation memory for follow-up questions
 - Asking across multiple documents at once
+
+(See the detailed roadmap in [`docs/PLAN.md`](docs/PLAN.md).)
 
 ## Tech stack
 
@@ -46,12 +41,8 @@ All AI models **run locally via Ollama** — no paid API, no constant internet n
 
    ```bash
    ollama pull bge-m3
-   ollama pull qwen2.5:3b
+   ollama pull qwen2.5:3b      # or gemma2:9b if your machine is powerful enough
    ```
-
-   The LLM defaults to `qwen2.5:3b`. To use another model (e.g. `gemma2:9b` on a
-   powerful machine), pull it and change `LLM_MODEL` in `doctutor/config.py` — a
-   model picker in the UI is planned (T1.3).
 
 2. Install Python dependencies:
 
@@ -69,49 +60,17 @@ streamlit run app.py
 
 The app opens at http://localhost:8501.
 
-### Running with Docker
-
-The app runs in Docker; Ollama stays **native on the host** (Docker on macOS has
-no Metal GPU access). The container reaches it via `host.docker.internal`.
-
-```bash
-docker compose -f docker/docker-compose.yml up --build
-```
-
-For IDE autocomplete without running the app locally, create the `vendor` venv:
-
-```bash
-./macos-script.sh
-source vendor/bin/activate
-```
-
 ## Project structure
 
 ```
 .
-├── app.py                  # Entry point: streamlit run app.py
-├── doctutor/               # Application package
-│   ├── config.py           # Defaults: models, DB path, chunking & retrieval params
-│   ├── pdf_loader.py       # Read PDF -> (page number, text) pairs
-│   ├── chunker.py          # Chunker: split text by sentence with overlap
-│   ├── embedder.py         # OllamaEmbedder: batched embeddings via Ollama
-│   ├── vector_store.py     # VectorStore: ChromaDB wrapper (add/query/delete)
-│   ├── llm.py              # OllamaLLM: prompt template + chat call
-│   ├── rag.py              # RAGCore: composes the pipeline end-to-end
-│   └── ui/
-│       ├── sidebar.py      # Upload & index status sidebar
-│       └── chat.py         # Chat history + Q&A flow
-├── requirements.txt        # Python dependencies
-├── macos-script.sh         # Create "vendor" venv for IDE autocomplete (app runs in Docker)
-├── chroma_db/              # Created at runtime — persisted vector index (gitignored)
-├── docker/
-│   ├── Dockerfile
-│   ├── Dockerfile.dockerignore
-│   └── docker-compose.yml
+├── app.py              # Streamlit UI
+├── rag_core.py         # Core logic: read PDF, chunk, embed, retrieve, Q&A
+├── requirements.txt    # Python dependencies
 └── docs/
-    ├── PLAN.md             # Work plan by phase
-    ├── reference.pdf       # Original AI VIET NAM material (reference)
-    └── overview.pdf        # Product overview document
+    ├── PLAN.md         # Work plan by phase
+    ├── reference.pdf   # Original AI VIET NAM material (reference)
+    └── overview.pdf    # Product overview document
 ```
 
 ## Usage
