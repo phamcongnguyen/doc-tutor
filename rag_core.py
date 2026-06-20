@@ -1,9 +1,9 @@
-import tempfile, os, time
+import tempfile, os
 import pypdf
 import chromadb
 import ollama
 
-client = chromadb.PersistentClient(path="chroma_db")
+client = chromadb.PersistentClient(path = "chroma_db")
 
 LLM_MODEL = "qwen2.5:3b"
 EMBED_MODEL = "bge-m3"
@@ -72,10 +72,26 @@ def process_pdf(uploaded_file):
   )
   return col, len(chunks)
 
-def rag(question, collection, chat_history, model = LLM_MODEL, k = 4):
-  """Hàm RAG: tìm context và hỏi LLM."""
-  res = collection.query(query_embeddings = embed([question]), n_results = k)
+def retrieve(question: str, collection: chromadb.Collection, sources, k = 4):
+  res = collection.query(
+    query_embeddings = embed([question]),
+    n_results = k,
+    where={"source": {"$in": sources}})
   context = "\n\n".join(res["documents"][0])
+  # Gom số trang theo từng file -> {"a.pdf": [3, 7], "b.pdf": [2]}
+  by_source = {}
+  for metadata in res["metadatas"][0]:
+    by_source.setdefault(metadata["source"], set()).add(metadata["page"])
+  cites = {s: sorted(p) for s, p in by_source.items()}
+  return (context, cites)
+
+def rag(
+    question,
+    chat_history,
+    context,
+    model = LLM_MODEL,
+  ):
+  """Hàm RAG: tìm context và hỏi LLM."""
   history = chat_history[-6:] # giữ 3 lượt gần nhất (mỗi lượt = user + assistant)
   stream = ollama.chat(
     model = model,
@@ -86,5 +102,9 @@ def rag(question, collection, chat_history, model = LLM_MODEL, k = 4):
   for chunk in stream:
     yield chunk["message"]["content"]
 
-def get_collection():
+def get_collection() -> chromadb.Collection:
   return client.get_or_create_collection(DOCUMENTS)
+
+def list_sources(collection: chromadb.Collection):
+  metas = collection.get()["metadatas"]
+  return sorted({m["source"] for m in metas})
