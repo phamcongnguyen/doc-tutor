@@ -1,6 +1,8 @@
 import chromadb
-import ollama
 import json, re
+
+import config
+import rag_core
 
 QUIZ_PROMPT = """Bạn là giáo viên ra đề. Dựa HOÀN TOÀN vào nội dung tài liệu dưới đây, hãy tạo {n} câu hỏi trắc nghiệm tiếng Việt để giúp học viên tự ôn tập.
 
@@ -32,21 +34,15 @@ def _parse_quiz(raw):
       raise ValueError("Model không trả về JSON hợp lệ")
   return json.loads(raw[start:end + 1])
 
-def get_doc_text(collection: chromadb.Collection, source: str, max_chars = 6000) -> str:
-  # Lấy mọi chunk thuộc đúng file 'source' (không cần tìm kiếm ngữ nghĩa)
-  res = collection.get(where = {"source": source})
-  docs = res["documents"]
-  context = "\n\n".join(docs)
-  # Cắt bớt nếu quá dài để khỏi quá tải model nhỏ
+def get_doc_text(collection: chromadb.Collection, source: str, max_chars = config.MAX_CHARS) -> str:
+  # Gộp mọi chunk của file rồi cắt bớt nếu quá dài để khỏi quá tải model nhỏ
+  context = "\n\n".join(rag_core.get_doc_chunks(collection, source))
   return context[:max_chars]
 
 def generate_quiz(collection: chromadb.Collection, source: str, model: str, n_question: int):
   context = get_doc_text(collection = collection, source = source)
-  response = ollama.chat(
+  raw = rag_core.llm_chat(
+    [{"role": "user", "content": QUIZ_PROMPT.format(n = n_question, context = context)}],
     model = model,
-    messages = [{"role": "user", "content": QUIZ_PROMPT.format(n = n_question, context = context)}],
-    options = {"temperature": 0},
-    stream = False,
   )
-  raw = response["message"]["content"]
   return _parse_quiz(raw)

@@ -1,0 +1,10 @@
+MODELS = ["qwen2.5:3b", "gemma2:9b"]   # danh sách model đã pull sẵn
+LLM_MODEL = "qwen2.5:3b"
+EMBED_MODEL = "bge-m3"
+DOCUMENTS = "documents"
+DEFAULT_TEXT_SIZE = 1000
+DEFAULT_TEXT_OVERLAP = 200
+MAX_CHARS = 6000
+MAX_SINGLE = 8000
+RETRIEVE_K = 4            # số chunk lấy ra mỗi lần retrieve
+HISTORY_MESSAGES = 6      # số message lịch sử giữ lại (3 lượt user+assistant)

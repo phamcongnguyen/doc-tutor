@@ -1,5 +1,6 @@
 import chromadb
-import ollama
+import config
+import rag_core
 
 SUMMARY_PROMPT = """Bạn là trợ lý tóm tắt tài liệu học tập. Hãy tóm tắt nội dung dưới đây bằng tiếng Việt.
 
@@ -22,11 +23,7 @@ Các bản tóm tắt từng phần:
 
 Bản tóm tắt tổng hợp:"""
 
-def get_doc_chunks(collection: chromadb.Collection, source):
-  res = collection.get(where={"source": source})
-  return res["documents"]
-
-def _group_chunks(chunks, max_chars = 6000):
+def _group_chunks(chunks, max_chars = config.MAX_CHARS):
   groups, cur = [], ""
   for char in chunks:
     if len(cur) + len(char) > max_chars and cur:
@@ -38,16 +35,13 @@ def _group_chunks(chunks, max_chars = 6000):
   return groups
 
 def _summarize_one(text, model):
-  res = ollama.chat(
+  return rag_core.llm_chat(
+    [{"role": "user", "content": SUMMARY_PROMPT.format(context=text)}],
     model=model,
-    messages=[{"role": "user", "content": SUMMARY_PROMPT.format(context=text)}],
-    options={"temperature": 0},
-    stream=False,
   )
-  return res["message"]["content"]
 
-def summarize(collection: chromadb.Collection, source: str, model: str, max_single = 8000):
-  chunks = get_doc_chunks(collection=collection, source=source)
+def summarize(collection: chromadb.Collection, source: str, model: str, max_single = config.MAX_SINGLE):
+  chunks = rag_core.get_doc_chunks(collection, source)
   full = "\n\n".join(chunks) 
   if len(full) <= max_single:
     prompt = SUMMARY_PROMPT.format(context = full)
@@ -56,12 +50,8 @@ def summarize(collection: chromadb.Collection, source: str, model: str, max_sing
     partials = [_summarize_one(group, model) for group in groups]
     prompt = REDUCE_PROMPT.format(context="\n\n".join(partials))
 
-  stream = ollama.chat(
+  yield from rag_core.llm_chat(
+    [{"role": "user", "content": prompt}],
     model=model,
-    messages=[{"role": "user", "content": prompt}],
-    options={"temperature": 0},
     stream=True,
   )
-
-  for res in stream:
-    yield res["message"]["content"]
