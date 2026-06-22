@@ -2,12 +2,9 @@ import tempfile, os
 import pypdf
 import chromadb
 import ollama
+import config
 
 client = chromadb.PersistentClient(path = "chroma_db")
-
-LLM_MODEL = "qwen2.5:3b"
-EMBED_MODEL = "bge-m3"
-DOCUMENTS = "documents"
 
 PROMPT = """Bạn là trợ lý hỏi đáp. Dùng các đoạn ngữ cảnh dưới đây để trả lời câu hỏi.
 Nếu ngữ cảnh không có thông tin, hãy nói là bạn không biết, đừng bịa.
@@ -21,9 +18,24 @@ Trả lời:"""
 # Các hàm xử lý (core functions)
 def embed(texts):
   """Chuyển text thành vector embedding."""
-  return ollama.embed(model = EMBED_MODEL, input = texts)["embeddings"]
+  return ollama.embed(model = config.EMBED_MODEL, input = texts)["embeddings"]
 
-def chunk_text(text, size = 1000, overlap = 200):
+def llm_chat(messages, model = config.LLM_MODEL, stream = False):
+  """Gọi LLM qua Ollama với temperature=0 (mọi tác vụ đều cần kết quả ổn định).
+
+  stream=False -> trả về cả câu trả lời dạng chuỗi.
+  stream=True  -> trả về generator yield từng mảnh text (cho st.write_stream)."""
+  resp = ollama.chat(
+    model = model,
+    messages = messages,
+    options = {"temperature": 0},
+    stream = stream,
+  )
+  if stream:
+    return (chunk["message"]["content"] for chunk in resp)
+  return resp["message"]["content"]
+
+def chunk_text(text, size = config.DEFAULT_TEXT_SIZE, overlap = config.DEFAULT_TEXT_OVERLAP):
   """Cắt text thành các chunk nhỏ."""
   paras = [p.strip() for p in text.split("\n") if p.strip()]
   chunks, cur = [], ""
@@ -57,7 +69,7 @@ def process_pdf(uploaded_file):
       chunks.append({"text": c, "page": i})
 
   # Dùng 1 collection cố định cho mọi file
-  col = client.get_or_create_collection(DOCUMENTS)
+  col = client.get_or_create_collection(config.DOCUMENTS)
   # PDF scan/rỗng không trích được text -> không có gì để lưu.
   # Trả về sớm để tránh lỗi embed([]) / col.add([]) khi danh sách chunk rỗng.
   if not chunks:
@@ -72,7 +84,7 @@ def process_pdf(uploaded_file):
   )
   return col, len(chunks)
 
-def retrieve(question: str, collection: chromadb.Collection, sources, k = 4):
+def retrieve(question: str, collection: chromadb.Collection, sources, k = config.RETRIEVE_K):
   res = collection.query(
     query_embeddings = embed([question]),
     n_results = k,
@@ -89,22 +101,22 @@ def rag(
     question,
     chat_history,
     context,
-    model = LLM_MODEL,
+    model = config.LLM_MODEL,
   ):
   """Hàm RAG: tìm context và hỏi LLM."""
-  history = chat_history[-6:] # giữ 3 lượt gần nhất (mỗi lượt = user + assistant)
-  stream = ollama.chat(
-    model = model,
-    messages = [*history, {"role": "user", "content": PROMPT.format(context = context, question = question)}],
-    options = {"temperature": 0},
-    stream = True,
-  )
-  for chunk in stream:
-    yield chunk["message"]["content"]
+  history = chat_history[-config.HISTORY_MESSAGES:] # giữ 3 lượt gần nhất (mỗi lượt = user + assistant)
+  messages = [*history, {"role": "user", "content": PROMPT.format(context = context, question = question)}]
+  yield from llm_chat(messages, model = model, stream = True)
 
 def get_collection() -> chromadb.Collection:
-  return client.get_or_create_collection(DOCUMENTS)
+  return client.get_or_create_collection(config.DOCUMENTS)
 
 def list_sources(collection: chromadb.Collection):
   metas = collection.get()["metadatas"]
   return sorted({m["source"] for m in metas})
+
+def get_doc_chunks(collection: chromadb.Collection, source: str):
+  """Lấy toàn bộ chunk thuộc đúng 1 file (không tìm kiếm ngữ nghĩa).
+
+  Dùng chung cho quiz và summarize — những tác vụ cần đọc cả tài liệu."""
+  return collection.get(where = {"source": source})["documents"]
