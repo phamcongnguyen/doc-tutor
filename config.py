@@ -8,3 +8,7 @@ MAX_CHARS = 6000
 MAX_SINGLE = 8000
 RETRIEVE_K = 4            # số chunk lấy ra mỗi lần retrieve
 HISTORY_MESSAGES = 6      # số message lịch sử giữ lại (3 lượt user+assistant)
+RETRIEVE_CANDIDATES = 20   # số ứng viên lấy ra từ mỗi phương pháp trước khi gộp
+RRF_K = 60                 # hằng số làm mượt của Reciprocal Rank Fusion
+RERANK_MODEL = "BAAI/bge-reranker-v2-m3"  # cross-encoder đa ngữ, cùng họ BGE-M3
+USE_RERANK = True                          # cờ bật/tắt để so sánh & phòng khi demo lỗi

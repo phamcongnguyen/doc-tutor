@@ -3,6 +3,8 @@ import pypdf
 import chromadb
 import ollama
 import config
+from rank_bm25 import BM25Okapi
+import numpy as np
 
 client = chromadb.PersistentClient(path = "chroma_db")
 
@@ -14,6 +16,8 @@ Ngữ cảnh: {context}
 
 Câu hỏi: {question}
 Trả lời:"""
+
+_reranker = None
 
 # Các hàm xử lý (core functions)
 def embed(texts):
@@ -85,17 +89,42 @@ def process_pdf(uploaded_file):
   return col, len(chunks)
 
 def retrieve(question: str, collection: chromadb.Collection, sources, k = config.RETRIEVE_K):
-  res = collection.query(
-    query_embeddings = embed([question]),
-    n_results = k,
-    where={"source": {"$in": sources}})
-  context = "\n\n".join(res["documents"][0])
-  # Gom số trang theo từng file -> {"a.pdf": [3, 7], "b.pdf": [2]}
+  # 1. Lấy toàn bộ chunk của các file đang chọn (kèm embeddings + metadata)
+  data = collection.get(
+    where={"source": {"$in": sources}},
+    include=["documents", "metadatas", "embeddings"],
+  )
+  docs, metas = data["documents"], data["metadatas"]
+  if not docs:
+    return ("", {})
+  
+  # 2a. Semantic: xếp hạng theo khoảng cách cosine tới câu hỏi
+  qvec = embed([question])[0]
+  sem_order = _semantic_rank(qvec, data["embeddings"])  # index sắp theo gần nhất
+
+  # 2b. Keyword: xếp hạng BM25
+  bm_order = _bm25_rank(question, docs)
+
+  # 3. Gộp bằng RRF
+  scores = {}
+  for rank, i in enumerate(sem_order[:config.RETRIEVE_CANDIDATES]):
+    scores[i] = scores.get(i, 0) + 1 / (config.RRF_K + rank)
+  for rank, i in enumerate(bm_order[:config.RETRIEVE_CANDIDATES]):
+    scores[i] = scores.get(i, 0) + 1 / (config.RRF_K + rank)
+
+  ranked = sorted(scores, key=lambda i: scores[i], reverse=True)
+  if config.USE_RERANK and len(ranked) > k:
+    ranked = _rerank(question, ranked, docs)  # cross-encoder chấm lại toàn bộ ứng viên RRF
+  top = ranked[:k]
+
+  # 4. Dựng context + cites như cũ
+  context = "\n\n".join(docs[i] for i in top)
   by_source = {}
-  for metadata in res["metadatas"][0]:
-    by_source.setdefault(metadata["source"], set()).add(metadata["page"])
+  for i in top:
+    by_source.setdefault(metas[i]["source"], set()).add(metas[i]["page"])
   cites = {s: sorted(p) for s, p in by_source.items()}
   return (context, cites)
+
 
 def rag(
     question,
@@ -120,3 +149,38 @@ def get_doc_chunks(collection: chromadb.Collection, source: str):
 
   Dùng chung cho quiz và summarize — những tác vụ cần đọc cả tài liệu."""
   return collection.get(where = {"source": source})["documents"]
+
+def _tokenize(text: str):
+  # Đủ dùng cho tiếng Việt giai đoạn đầu; có thể nâng cấp pyvi/underthesea sau
+  return text.lower().split()
+
+def _bm25_rank(question: str, docs: list[str]):
+  """Trả về danh sách index của docs, sắp theo điểm BM25 giảm dần."""
+  bm25 = BM25Okapi([_tokenize(doc) for doc in docs])
+  scores = bm25.get_scores(_tokenize(question))
+  return sorted(range(len(docs)), key=lambda i: scores[i], reverse=True)
+
+def _semantic_rank(qvec, embeddings):
+  M = np.array(embeddings)
+  q = np.array(qvec)
+  # bge-m3 không tự chuẩn hóa -> chuẩn hóa để cosine = tích vô hướng
+  M = M / (np.linalg.norm(M, axis=1, keepdims=True) + 1e-10)
+  q = q / (np.linalg.norm(q) + 1e-10)
+  sims = M @ q
+  return sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)
+
+def _get_reranker():
+  """Tải cross-encoder 1 lần rồi tái dùng (lazy, tránh chậm lúc khởi động)."""
+  global _reranker
+  if _reranker is None:
+    from sentence_transformers import CrossEncoder
+    _reranker = CrossEncoder(config.RERANK_MODEL)
+  return _reranker
+
+def _rerank(question, candidates, docs):
+  """candidates: list index vào docs. Chấm lại bằng cross-encoder, trả index sắp theo điểm giảm."""
+  model = _get_reranker()
+  # Cross-encoder đọc CẶP (câu hỏi, đoạn) cùng lúc -> hiểu liên quan sâu hơn embedding
+  pairs = [(question, docs[i]) for i in candidates]
+  scores = model.predict(pairs)
+  return [i for _, i in sorted(zip(scores, candidates), key=lambda x: x[0], reverse=True)]
