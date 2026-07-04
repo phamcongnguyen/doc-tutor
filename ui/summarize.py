@@ -1,6 +1,6 @@
 import streamlit as st
 import rag_core
-import summarize as summarize_logic  # module logic ở gốc dự án (khác file UI này)
+from features import summarize as summarize_logic  # logic tóm tắt (khác file UI này)
 
 
 def render(collection, model):

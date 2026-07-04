@@ -1,6 +1,6 @@
 import streamlit as st
 import rag_core
-import quiz as quiz_logic  # module logic ở gốc dự án (khác file UI này)
+from features import quiz as quiz_logic  # logic sinh quiz (khác file UI này)
 
 
 def render(collection, model):
