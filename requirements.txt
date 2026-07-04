@@ -8,7 +8,7 @@ chromadb==1.5.9     # Vector database (lưu & tìm kiếm vector)
 ollama==0.6.2       # Giao tiếp với Ollama server (embedding + LLM)
 
 # --- Tùy chọn, mở khi tới Giai đoạn 3 ---
-# rank-bm25        # T3.1 — tìm kiếm theo từ khóa (Hybrid Search)
-# sentence-transformers  # T3.2 — mô hình rerank (nếu dùng)
-# pytesseract      # T3.3 — OCR cho PDF scan (cần cài thêm Tesseract ngoài Python)
-# pdf2image        # T3.3 — chuyển trang PDF thành ảnh để OCR
+rank-bm25        # T3.1 — tìm kiếm theo từ khóa (Hybrid Search)
+sentence-transformers  # T3.2 — mô hình rerank (nếu dùng)
+pytesseract      # T3.3 — OCR cho PDF scan (cần cài thêm Tesseract ngoài Python)
+pdf2image        # T3.3 — chuyển trang PDF thành ảnh để OCR
