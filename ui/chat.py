@@ -1,5 +1,6 @@
 import streamlit as st
 import rag_core
+from features import chat as chat_logic  # logic sinh câu trả lời (khác file UI này)
 
 
 def _format_cites(cites):
@@ -38,7 +39,7 @@ def render(collection, model):
       cites = {}
       try:
         context, cites = rag_core.retrieve(q, collection, selected)
-        stream = rag_core.rag(q, st.session_state.chat_history, context, model)
+        stream = chat_logic.answer(q, st.session_state.chat_history, context, model)
         ans = st.write_stream(stream)
         st.caption("📄 Nguồn: " + _format_cites(cites))
       except Exception as e:

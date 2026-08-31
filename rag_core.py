@@ -1,3 +1,8 @@
+"""Hạ tầng RAG dùng chung: đọc PDF, chunk, embed, lưu/đọc ChromaDB, truy hồi.
+
+Logic riêng của từng tính năng (chat / quiz / tóm tắt) nằm trong package `features/`.
+"""
+
 import tempfile, os
 import pypdf
 import chromadb
@@ -6,23 +11,20 @@ import config
 from rank_bm25 import BM25Okapi
 import numpy as np
 
-client = chromadb.PersistentClient(path = "chroma_db")
-
-PROMPT = """Bạn là trợ lý hỏi đáp. Dùng các đoạn ngữ cảnh dưới đây để trả lời câu hỏi.
-Nếu ngữ cảnh không có thông tin, hãy nói là bạn không biết, đừng bịa.
-Trả lời ngắn gọn, chính xác, bằng tiếng Việt.
-
-Ngữ cảnh: {context}
-
-Câu hỏi: {question}
-Trả lời:"""
+client = chromadb.PersistentClient(path = config.CHROMA_PATH)
 
 _reranker = None
 
 # Các hàm xử lý (core functions)
 def embed(texts):
-  """Chuyển text thành vector embedding."""
-  return ollama.embed(model = config.EMBED_MODEL, input = texts)["embeddings"]
+  """Chuyển danh sách text thành vector embedding.
+
+  Chia thành batch (config.EMBED_BATCH) để tránh gửi 1 request quá lớn khi PDF dài."""
+  out = []
+  for i in range(0, len(texts), config.EMBED_BATCH):
+    batch = texts[i:i + config.EMBED_BATCH]
+    out.extend(ollama.embed(model = config.EMBED_MODEL, input = batch)["embeddings"])
+  return out
 
 def llm_chat(messages, model = config.LLM_MODEL, stream = False):
   """Gọi LLM qua Ollama với temperature=0 (mọi tác vụ đều cần kết quả ổn định).
@@ -60,7 +62,7 @@ def process_pdf(uploaded_file):
   with tempfile.NamedTemporaryFile(delete = False, suffix = ".pdf") as tmp:
     tmp.write(uploaded_file.getvalue())
     path = tmp.name
-  
+
   # Đọc nội dung PDF
   pages = pypdf.PdfReader(path).pages
   os.unlink(path) # Xóa file tạm
@@ -97,7 +99,7 @@ def retrieve(question: str, collection: chromadb.Collection, sources, k = config
   docs, metas = data["documents"], data["metadatas"]
   if not docs:
     return ("", {})
-  
+
   # 2a. Semantic: xếp hạng theo khoảng cách cosine tới câu hỏi
   qvec = embed([question])[0]
   sem_order = _semantic_rank(qvec, data["embeddings"])  # index sắp theo gần nhất
@@ -125,23 +127,12 @@ def retrieve(question: str, collection: chromadb.Collection, sources, k = config
   cites = {s: sorted(p) for s, p in by_source.items()}
   return (context, cites)
 
-
-def rag(
-    question,
-    chat_history,
-    context,
-    model = config.LLM_MODEL,
-  ):
-  """Hàm RAG: tìm context và hỏi LLM."""
-  history = chat_history[-config.HISTORY_MESSAGES:] # giữ 3 lượt gần nhất (mỗi lượt = user + assistant)
-  messages = [*history, {"role": "user", "content": PROMPT.format(context = context, question = question)}]
-  yield from llm_chat(messages, model = model, stream = True)
-
 def get_collection() -> chromadb.Collection:
   return client.get_or_create_collection(config.DOCUMENTS)
 
 def list_sources(collection: chromadb.Collection):
-  metas = collection.get()["metadatas"]
+  # Chỉ cần metadata để liệt kê tên file -> không kéo cả documents về cho nhẹ
+  metas = collection.get(include=["metadatas"])["metadatas"]
   return sorted({m["source"] for m in metas})
 
 def get_doc_chunks(collection: chromadb.Collection, source: str):
@@ -149,6 +140,11 @@ def get_doc_chunks(collection: chromadb.Collection, source: str):
 
   Dùng chung cho quiz và summarize — những tác vụ cần đọc cả tài liệu."""
   return collection.get(where = {"source": source})["documents"]
+
+def get_doc_text(collection: chromadb.Collection, source: str, max_chars = None) -> str:
+  """Gộp mọi chunk của 1 file thành một chuỗi; cắt bớt nếu vượt max_chars."""
+  text = "\n\n".join(get_doc_chunks(collection, source))
+  return text[:max_chars] if max_chars else text
 
 def _tokenize(text: str):
   # Đủ dùng cho tiếng Việt giai đoạn đầu; có thể nâng cấp pyvi/underthesea sau

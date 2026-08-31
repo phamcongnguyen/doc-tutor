@@ -21,11 +21,16 @@ with st.sidebar:
     with st.spinner("Đang xử lý..."):
       total = 0
       for file in files:
-        st.session_state.collection, n = rag_core.process_pdf(file)
+        # Bọc từng file: PDF hỏng/mã hoá không được làm sập cả app hay chặn các file còn lại
+        try:
+          st.session_state.collection, n = rag_core.process_pdf(file)
+        except Exception as e:
+          st.error(f"Không xử lý được `{file.name}` — file có thể hỏng/mã hoá. ({e})")
+          continue
         total += n
         if n == 0:
-          st.warning("Không trích được text — file có thể là PDF scan/ảnh.")
-    st.success(f"Đã xử lý {len(files)} file — tổng {total} chunks")
+          st.warning(f"`{file.name}`: không trích được text — có thể là PDF scan/ảnh.")
+    st.success(f"Đã xử lý xong — tổng {total} chunks")
 
   st.info(f"{len(rag_core.list_sources(st.session_state.collection))} tài liệu")
   if st.button("Xóa lịch sử chat", use_container_width=True):
